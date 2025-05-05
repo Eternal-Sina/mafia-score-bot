@@ -1,103 +1,94 @@
-import json
+import logging
 import os
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import asyncio
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# لیست نام‌های کاربری مجاز برای ثبت مدال (username های تلگرام)
-AUTHORIZED_USERNAMES = ["sinamsv", "admin2", "admin3", "admin4", "admin5"]
+# توکن ربات شما
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 
-DATA_FILE = "medals.json"
+# لیست کاربران مجاز برای ثبت مدال
+AUTHORIZED_USERNAMES = ["sinamsv", "admin1", "admin2", "admin3", "admin4"]
 
-def load_data():
-    """ داده‌ها را از فایل بارگذاری می‌کند. """
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    return {}
+# تنظیمات logging برای دیباگ کردن
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def save_data(data):
-    """ داده‌ها را در فایل ذخیره می‌کند. """
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
+# داده‌های رده بندی مدال‌ها
+leaderboard = {}
 
+# فرمان /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ دستور start برای خوش‌آمدگویی. """
-    await update.message.reply_text("سلام! برای دیدن رده‌بندی از دستور /leaderboard استفاده کن.")
+    user = update.message.from_user
+    username = user.username
 
-async def register_medals(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ ثبت مدال‌ها برای افراد مجاز """
-    username = update.effective_user.username
+    if username in AUTHORIZED_USERNAMES:
+        await update.message.reply_text("سلام! شما می‌توانید مدال‌ها را ثبت کنید.")
+    else:
+        await update.message.reply_text("سلام! شما اجازه ثبت مدال ندارید.")
+
+# فرمان /leaderboard
+async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # مرتب کردن رده بندی بر اساس مدال‌های طلا، نقره، برنز
+    sorted_leaderboard = sorted(leaderboard.items(), key=lambda item: (
+        item[1].get('gold', 0), item[1].get('silver', 0), item[1].get('bronze', 0)), reverse=True)
+    
+    response = "رده بندی مدال‌ها:\n"
+    for idx, (user, medals) in enumerate(sorted_leaderboard, start=1):
+        gold = medals.get('gold', 0)
+        silver = medals.get('silver', 0)
+        bronze = medals.get('bronze', 0)
+        response += f"{idx}. {user} - 🥇({gold}) 🥈({silver}) 🥉({bronze})\n"
+    
+    await update.message.reply_text(response)
+
+# فرمان برای ثبت مدال
+async def add_medal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    username = user.username
+
     if username not in AUTHORIZED_USERNAMES:
-        await update.message.reply_text("❌ شما اجازه ثبت مدال ندارید.")
+        await update.message.reply_text("شما اجازه ثبت مدال ندارید.")
         return
 
-    if len(context.args) != 3:
-        await update.message.reply_text("❗ فرمت درست: /register اسم1 اسم2 اسم3")
+    # بررسی تعداد آرگومان‌ها
+    if len(context.args) < 3:
+        await update.message.reply_text("لطفا تعداد مدال‌ها را وارد کنید. به صورت: /addmedal <username> <gold> <silver> <bronze>")
         return
 
-    gold, silver, bronze = context.args
+    target_user = context.args[0]
+    gold = int(context.args[1])
+    silver = int(context.args[2])
+    bronze = int(context.args[3])
 
-    # بارگذاری داده‌ها
-    data = load_data()
-    for name, medal in zip([gold, silver, bronze], ["gold", "silver", "bronze"]):
-        if name not in data:
-            data[name] = {"gold": 0, "silver": 0, "bronze": 0}
-        data[name][medal] += 1
+    # اضافه کردن یا بروزرسانی مدال‌ها
+    if target_user not in leaderboard:
+        leaderboard[target_user] = {'gold': 0, 'silver': 0, 'bronze': 0}
 
-    # ذخیره داده‌ها
-    save_data(data)
-    await update.message.reply_text("✅ مدال‌ها ثبت شدند!")
+    leaderboard[target_user]['gold'] += gold
+    leaderboard[target_user]['silver'] += silver
+    leaderboard[target_user]['bronze'] += bronze
 
-async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ نمایش رده‌بندی افراد """
-    data = load_data()
-    if not data:
-        await update.message.reply_text("هیچ مدالی ثبت نشده.")
-        return
+    await update.message.reply_text(f"مدال‌ها برای {target_user} ثبت شد.")
 
-    # محاسبه امتیاز کل
-    scores = []
-    for name, medals in data.items():
-        score = medals["gold"] * 3 + medals["silver"] * 2 + medals["bronze"]
-        scores.append((score, medals["gold"], medals["silver"], medals["bronze"], name))
-
-    # مرتب‌سازی بر اساس امتیاز و مدال‌ها
-    scores.sort(reverse=True)
-
-    result = "🏆 رده‌بندی:\n"
-    last_score = None
-    rank = 0
-    real_rank = 0
-
-    for i, (score, g, s, b, name) in enumerate(scores):
-        real_rank += 1
-        if (score, g, s, b) != last_score:
-            rank = real_rank
-            last_score = (score, g, s, b)
-
-        result += f"{rank}. {name}: 🥇({g}) 🥈({s}) 🥉({b})\n"
-
-    await update.message.reply_text(result)
-
+# تنظیمات اپلیکیشن
 async def main():
-    """ راه‌اندازی و شروع ربات """
-    TOKEN = os.getenv("BOT_TOKEN")
-    if not TOKEN:
-        print("❌ BOT_TOKEN تعریف نشده!")
-        return
+    application = Application.builder().token(BOT_TOKEN).build()
 
-    app = ApplicationBuilder().token(TOKEN).build()
+    # تعریف فرمان‌ها
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("leaderboard", leaderboard_command))
+    application.add_handler(CommandHandler("addmedal", add_medal))
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("register", register_medals))
-    app.add_handler(CommandHandler("leaderboard", leaderboard))
-
-    await app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
-        webhook_url=os.environ.get("WEBHOOK_URL")
+    # شروع webhook
+    await application.run_webhook(
+        listen="0.0.0.0",  # گوش دادن به تمامی آدرس‌ها
+        port=int(os.environ.get('PORT', 5000)),  # پورت 5000 یا پورت انتخابی
+        url_path=BOT_TOKEN,
+        webhook_url=f"https://your-render-app-name.onrender.com/{BOT_TOKEN}",
     )
 
+# اجرای اپلیکیشن بدون استفاده از asyncio.run
 if __name__ == "__main__":
-    asyncio.run(main())
+    import asyncio
+    asyncio.create_task(main())
