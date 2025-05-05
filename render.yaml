@@ -1,7 +1,10 @@
 services:
-  - type: worker
+  - type: web
     name: mafia-bot
     env: python
     plan: free
     buildCommand: ""
     startCommand: python bot.py
+    envVars:
+      - key: RENDER_EXTERNAL_URL
+        value: https://mafia-score-bot.onrender.com
