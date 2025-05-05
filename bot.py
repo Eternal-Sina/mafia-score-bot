@@ -91,4 +91,4 @@ async def main():
 # اجرای اپلیکیشن بدون استفاده از asyncio.run
 if __name__ == "__main__":
     import asyncio
-    asyncio.create_task(main())
+    asyncio.run(main())
