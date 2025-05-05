@@ -51,7 +51,7 @@ async def show_scores(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(result)
 
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(os.getenv("7601540468:AAH0eq3014sk80b0NsuuK9D1lCx7EyRmSh8")).build()
+    app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
 
     app.add_handler(CommandHandler("add", add_winners))
     app.add_handler(CommandHandler("scores", show_scores))
