@@ -1,6 +1,5 @@
 import os
 import json
-from collections import defaultdict
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
@@ -49,10 +48,27 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         -item[1]["bronze"]  # بعد برنز (نزولی)
     ))
 
+    # تعیین رتبه‌ها و شناسایی افراد هم‌رتبه
+    ranks = []
+    last_rank = 1
+    for i, (name, medals) in enumerate(sorted_leaderboard):
+        if i > 0:
+            prev_name, prev_medals = sorted_leaderboard[i - 1]
+            # اگر نفر قبلی هم مدال‌های مشابه داشته باشه، هم‌رتبه خواهند بود
+            if medals == prev_medals:
+                ranks[-1][0].append(name)  # اضافه کردن به رتبه قبلی
+                continue
+            else:
+                last_rank = i + 1  # تنظیم رتبه جدید
+
+        ranks.append(([name], last_rank, medals))
+
     # ساختن پیام برای رده‌بندی
     lines = []
-    for i, (name, medals) in enumerate(sorted_leaderboard, start=1):
-        line = f"{i}. {name}: 🥇({medals['gold']}) 🥈({medals['silver']}) 🥉({medals['bronze']})"
+    for rank in ranks:
+        names_in_rank = ', '.join(rank[0])
+        medals = rank[2]
+        line = f"{rank[1]}. {names_in_rank}: 🥇({medals['gold']}) 🥈({medals['silver']}) 🥉({medals['bronze']})"
         lines.append(line)
 
     await update.message.reply_text("\n".join(lines))
