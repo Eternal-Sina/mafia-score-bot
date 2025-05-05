@@ -1,91 +1,103 @@
-import os
 import json
+import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import asyncio
+
+# لیست نام‌های کاربری مجاز برای ثبت مدال (username های تلگرام)
+AUTHORIZED_USERNAMES = ["sinamsv", "admin2", "admin3", "admin4", "admin5"]
 
 DATA_FILE = "medals.json"
 
-# بارگذاری داده‌ها از فایل
 def load_data():
-    try:
+    """ داده‌ها را از فایل بارگذاری می‌کند. """
+    if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
             return json.load(f)
-    except FileNotFoundError:
-        return {}
+    return {}
 
-# ذخیره داده‌ها در فایل
 def save_data(data):
+    """ داده‌ها را در فایل ذخیره می‌کند. """
     with open(DATA_FILE, "w") as f:
         json.dump(data, f)
 
-# داده‌های اولیه
-data = load_data()
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ دستور start برای خوش‌آمدگویی. """
+    await update.message.reply_text("سلام! برای دیدن رده‌بندی از دستور /leaderboard استفاده کن.")
 
-# دستور برای ثبت نتایج
-async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) != 3:
-        await update.message.reply_text("فرمت: /register name1 name2 name3")
+async def register_medals(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ ثبت مدال‌ها برای افراد مجاز """
+    username = update.effective_user.username
+    if username not in AUTHORIZED_USERNAMES:
+        await update.message.reply_text("❌ شما اجازه ثبت مدال ندارید.")
         return
 
-    names = context.args
-    medals = ["gold", "silver", "bronze"]
+    if len(context.args) != 3:
+        await update.message.reply_text("❗ فرمت درست: /register اسم1 اسم2 اسم3")
+        return
 
-    for i in range(3):
-        name = names[i]
+    gold, silver, bronze = context.args
+
+    # بارگذاری داده‌ها
+    data = load_data()
+    for name, medal in zip([gold, silver, bronze], ["gold", "silver", "bronze"]):
         if name not in data:
             data[name] = {"gold": 0, "silver": 0, "bronze": 0}
-        data[name][medals[i]] += 1
+        data[name][medal] += 1
 
+    # ذخیره داده‌ها
     save_data(data)
-    await update.message.reply_text("مدال‌ها ثبت شدند.")
+    await update.message.reply_text("✅ مدال‌ها ثبت شدند!")
 
-# دستور برای نمایش رده‌بندی
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # مرتب‌سازی لیست بر اساس مدال‌های طلا، نقره، و برنز
-    sorted_leaderboard = sorted(data.items(), key=lambda item: (
-        -item[1]["gold"],   # اول طلا (نزولی)
-        -item[1]["silver"], # بعد نقره (نزولی)
-        -item[1]["bronze"]  # بعد برنز (نزولی)
-    ))
+    """ نمایش رده‌بندی افراد """
+    data = load_data()
+    if not data:
+        await update.message.reply_text("هیچ مدالی ثبت نشده.")
+        return
 
-    # تعیین رتبه‌ها و شناسایی افراد هم‌رتبه
-    ranks = []
-    last_rank = 1
-    for i, (name, medals) in enumerate(sorted_leaderboard):
-        if i > 0:
-            prev_name, prev_medals = sorted_leaderboard[i - 1]
-            # اگر نفر قبلی هم مدال‌های مشابه داشته باشه، هم‌رتبه خواهند بود
-            if medals == prev_medals:
-                ranks[-1][0].append(name)  # اضافه کردن به رتبه قبلی
-                continue
-            else:
-                last_rank = i + 1  # تنظیم رتبه جدید
+    # محاسبه امتیاز کل
+    scores = []
+    for name, medals in data.items():
+        score = medals["gold"] * 3 + medals["silver"] * 2 + medals["bronze"]
+        scores.append((score, medals["gold"], medals["silver"], medals["bronze"], name))
 
-        ranks.append(([name], last_rank, medals))
+    # مرتب‌سازی بر اساس امتیاز و مدال‌ها
+    scores.sort(reverse=True)
 
-    # ساختن پیام برای رده‌بندی
-    lines = []
-    for rank in ranks:
-        names_in_rank = ', '.join(rank[0])
-        medals = rank[2]
-        line = f"{rank[1]}. {names_in_rank}: 🥇({medals['gold']}) 🥈({medals['silver']}) 🥉({medals['bronze']})"
-        lines.append(line)
+    result = "🏆 رده‌بندی:\n"
+    last_score = None
+    rank = 0
+    real_rank = 0
 
-    await update.message.reply_text("\n".join(lines))
+    for i, (score, g, s, b, name) in enumerate(scores):
+        real_rank += 1
+        if (score, g, s, b) != last_score:
+            rank = real_rank
+            last_score = (score, g, s, b)
 
-# اجرای ربات
-TOKEN = os.getenv("BOT_TOKEN")
-RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
+        result += f"{rank}. {name}: 🥇({g}) 🥈({s}) 🥉({b})\n"
 
-app = ApplicationBuilder().token(TOKEN).build()
+    await update.message.reply_text(result)
 
-# ثبت دستورات
-app.add_handler(CommandHandler("register", register))
-app.add_handler(CommandHandler("leaderboard", leaderboard))
+async def main():
+    """ راه‌اندازی و شروع ربات """
+    TOKEN = os.getenv("BOT_TOKEN")
+    if not TOKEN:
+        print("❌ BOT_TOKEN تعریف نشده!")
+        return
 
-# راه‌اندازی Webhook
-app.run_webhook(
-    listen="0.0.0.0",
-    port=int(os.environ["PORT"]),
-    webhook_url=f"{RENDER_EXTERNAL_URL}/"
-)
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("register", register_medals))
+    app.add_handler(CommandHandler("leaderboard", leaderboard))
+
+    await app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        webhook_url=os.environ.get("WEBHOOK_URL")
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
