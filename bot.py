@@ -2,9 +2,17 @@ import logging
 import os
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from dotenv import load_dotenv
+
+# بارگذاری متغیرهای محیطی از فایل .env
+load_dotenv()
 
 # توکن ربات شما
 BOT_TOKEN = os.getenv('BOT_TOKEN')
+
+# آدرس URL سرور شما (برای Webhook)
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # به این آدرس اشاره کنید، مثلاً https://yourdomain.com/webhook
 
 # لیست کاربران مجاز برای ثبت مدال
 AUTHORIZED_USERNAMES = ["sinamsv", "admin1", "admin2", "admin3", "admin4"]
@@ -80,12 +88,13 @@ async def main():
     application.add_handler(CommandHandler("leaderboard", leaderboard_command))
     application.add_handler(CommandHandler("addmedal", add_medal))
 
-    # شروع webhook
+    # راه‌اندازی Webhook
     await application.run_webhook(
-        listen="0.0.0.0",  # گوش دادن به تمامی آدرس‌ها
-        port=int(os.environ.get('PORT', 5000)),  # پورت 5000 یا پورت انتخابی
-        url_path=BOT_TOKEN,
-        webhook_url=f"https://your-render-app-name.onrender.com/{BOT_TOKEN}",
+        listen="0.0.0.0",  # IP که به درخواست‌ها گوش می‌دهد
+        port=int(os.getenv('PORT', 5000)),  # پورت برای پذیرش درخواست‌ها (مثلاً 5000)
+        url_path='webhook',  # URL برای Webhook (این باید با Telegram همخوانی داشته باشد)
+        webhook_url=WEBHOOK_URL,  # آدرس Webhook شما که به Telegram اطلاع داده می‌شود
+        secret_token=None,  # اگر نیاز به توکن امنیتی دارید، اینجا قرار دهید
     )
 
 # اجرای اپلیکیشن بدون استفاده از asyncio.run
