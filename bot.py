@@ -1,60 +1,72 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import json
 import os
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes
+)
+from collections import defaultdict
+import json
 
-DATA_FILE = 'scores.json'
+# مسیر فایل داده
+DATA_FILE = "medals.json"
 
+# ذخیره/بارگذاری مدال‌ها
 def load_data():
     try:
-        with open(DATA_FILE, 'r') as f:
+        with open(DATA_FILE, "r") as f:
             return json.load(f)
-    except:
-        return {}
+    except FileNotFoundError:
+        return defaultdict(lambda: {"gold": 0, "silver": 0, "bronze": 0})
 
 def save_data(data):
-    with open(DATA_FILE, 'w') as f:
+    with open(DATA_FILE, "w") as f:
         json.dump(data, f)
 
-def add_medal(data, username, medal_type):
-    if username not in data:
-        data[username] = {'gold': 0, 'silver': 0, 'bronze': 0}
-    data[username][medal_type] += 1
+# مدال‌ها
+data = load_data()
 
-async def add_winners(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# دستور ثبت
+async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 3:
-        await update.message.reply_text("فرمت درست: /add username1 username2 username3")
+        await update.message.reply_text("فرمت: /register name1 name2 name3")
         return
 
-    usernames = context.args
-    data = load_data()
-    medals = ['gold', 'silver', 'bronze']
+    names = context.args
+    medals = ["gold", "silver", "bronze"]
 
-    for username, medal in zip(usernames, medals):
-        add_medal(data, username, medal)
+    for i in range(3):
+        name = names[i]
+        data.setdefault(name, {"gold": 0, "silver": 0, "bronze": 0})
+        data[name][medals[i]] += 1
 
     save_data(data)
     await update.message.reply_text("مدال‌ها ثبت شدند.")
 
-async def show_scores(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = load_data()
-    if not data:
-        await update.message.reply_text("هنوز هیچ مدالی ثبت نشده.")
-        return
+# نمایش رتبه‌ها
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lines = []
+    for name, medals in data.items():
+        line = f"{name}: 🥇({medals['gold']}) 🥈({medals['silver']}) 🥉({medals['bronze']})"
+        lines.append(line)
+    await update.message.reply_text("\n".join(lines))
 
-    result = "🏆 رتبه‌بندی بازیکنان:\n"
-    sorted_data = sorted(data.items(), key=lambda x: (x[1]['gold'], x[1]['silver'], x[1]['bronze']), reverse=True)
+# شروع اپلیکیشن با Webhook
+async def main():
+    TOKEN = os.getenv("BOT_TOKEN")
+    RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
 
-    for username, scores in sorted_data:
-        result += f"{username} — 🥇({scores['gold']}) 🥈({scores['silver']}) 🥉({scores['bronze']})\n"
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    await update.message.reply_text(result)
+    app.add_handler(CommandHandler("register", register))
+    app.add_handler(CommandHandler("leaderboard", leaderboard))
 
-if __name__ == '__main__':
-    app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
+    await app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 8443)),
+        webhook_url=f"{RENDER_EXTERNAL_URL}/"
+    )
 
-    app.add_handler(CommandHandler("add", add_winners))
-    app.add_handler(CommandHandler("scores", show_scores))
-
-    print("ربات در حال اجراست...")
-    app.run_polling()
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
