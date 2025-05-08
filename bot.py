@@ -67,4 +67,6 @@ app.add_handler(CommandHandler("leaderboard", leaderboard))
 
 app.run_webhook(
     listen="0.0.0.0",
-    po
+    port=int(os.environ["PORT"]),
+    webhook_url=f"{RENDER_EXTERNAL_URL}/"
+)
