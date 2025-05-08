@@ -44,28 +44,31 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     score_map = defaultdict(list)
 
-    # محاسبه امتیاز
+    # محاسبه امتیاز و ذخیره داده‌ها
     for name, medals in data.items():
         g = medals["gold"]
         s = medals["silver"]
         b = medals["bronze"]
-        # به ازای هر 2 مدال نقره یک طلا و به ازای هر 4 مدال برنز یک طلا فرض می‌کنیم
-        score = g + s // 2 + b // 4
-        score_map[score].append(name)
+        score = g + s // 2 + b // 4  # تبدیل نقره و برنز به طلای فرضی
+        score_map[score].append((name, g, s, b))  # ذخیره نام و تعداد مدال‌ها
 
-    # مرتب‌سازی بر اساس امتیاز
+    # مرتب‌سازی بر اساس امتیاز، سپس طلا، نقره، برنز
     sorted_scores = sorted(score_map.keys(), reverse=True)
 
-    # نمایش رتبه‌ها
     output = []
     rank = 1
     for score in sorted_scores:
-        names = score_map[score]
+        names_and_medals = score_map[score]
+        
+        # مرتب‌سازی افراد با امتیاز مشابه بر اساس تعداد مدال‌های طلا، نقره و برنز
+        names_and_medals.sort(key=lambda x: (-x[1], -x[2], -x[3]))  # اول طلا، سپس نقره و بعد برنز
+
         output.append(f" رتبه {rank}:")
-        for name in names:
-            m = data[name]
-            output.append(f"{name}: 🥇({m['gold']}) 🥈({m['silver']}) 🥉({m['bronze']})")
-        rank += len(names)
+        for name, g, s, b in names_and_medals:
+            output.append(f"{name}: 🥇({g}) 🥈({s}) 🥉({b})")
+        
+        # تعداد نفرات هم رتبه را از rank بعدی کم می‌کنیم
+        rank += len(names_and_medals)
 
     await update.message.reply_text("\n".join(output))
 
