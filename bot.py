@@ -1,24 +1,55 @@
 import os
 import json
+import aiohttp
+from collections import defaultdict
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-DATA_FILE = "medals.json"
+# تنظیمات GitHub
+GITHUB_REPO = os.getenv("GITHUB_REPO")  # مثلا username/repo
+GITHUB_FILE = "medals.json"
+GITHUB_BRANCH = "main"
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
-def load_data():
-    try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
+GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
 
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
+headers = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github+json"
+}
 
-data = load_data()
+async def load_data():
+    async with aiohttp.ClientSession() as session:
+        async with session.get(GITHUB_API_URL, headers=headers) as res:
+            if res.status == 200:
+                response = await res.json()
+                content = response["content"]
+                import base64
+                decoded = base64.b64decode(content).decode()
+                return json.loads(decoded), response["sha"]
+            return {}, None
+
+async def save_data(data, sha=None):
+    async with aiohttp.ClientSession() as session:
+        payload = {
+            "message": "Update medals",
+            "content": json.dumps(data, ensure_ascii=False).encode("utf-8").decode("utf-8"),
+            "branch": GITHUB_BRANCH
+        }
+        if sha:
+            payload["sha"] = sha
+
+        import base64
+        payload["content"] = base64.b64encode(payload["content"].encode()).decode()
+
+        async with session.put(GITHUB_API_URL, headers=headers, json=payload) as res:
+            return res.status == 200 or res.status == 201
+
+data = {}
+data_sha = None
 
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global data, data_sha
     if len(context.args) != 3:
         await update.message.reply_text("فرمت: /register name1 name2 name3")
         return
@@ -32,51 +63,39 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data[name] = {"gold": 0, "silver": 0, "bronze": 0}
         data[name][medals[i]] += 1
 
-    save_data(data)
+    await save_data(data, data_sha)
     await update.message.reply_text("مدال‌ها ثبت شدند.")
 
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # آماده‌سازی لیست رتبه‌بندی بر اساس طلای واقعی + فرضی، بعد نقره، بعد برنز
-    players = []
-    for name, medals in data.items():
-        g = medals["gold"]
-        s = medals["silver"]
-        b = medals["bronze"]
+    global data, data_sha
+    data, data_sha = await load_data()
 
-        # فقط هر ۲ نقره = ۱ طلای فرضی، بقیه نادیده گرفته میشه
-        fake_golds = (s // 2) + (b // 4)
-        real_plus_fake_gold = g + fake_golds
-        players.append((name, real_plus_fake_gold, s, b, g, s, b))  # tuple برای مرتب‌سازی
+    # ساخت لیست برای رتبه‌بندی دقیق
+    participants = []
+    for name, m in data.items():
+        bonus_gold = (m["silver"] // 2) + (m["bronze"] // 4)
+        participants.append((name, m["gold"] + bonus_gold, m["silver"], m["bronze"], m))
 
-    # مرتب‌سازی: طلا (واقعی + فرضی) → نقره → برنز
-    players.sort(key=lambda x: (-x[1], -x[2], -x[3]))
+    # مرتب‌سازی بر اساس: طلا فرضی + واقعی > نقره > برنز
+    participants.sort(key=lambda x: (-x[1], -x[2], -x[3]))
 
     output = []
-    current_rank = 1
-    prev = None
-    same_rank_count = 0
+    rank = 1
+    prev_values = None
+    count_same = 0
 
-    for idx, player in enumerate(players):
-        name, _, _, _, g, s, b = player
-        key = (player[1], player[2], player[3])  # برای مقایسه رتبه
-
-        if key != prev:
-            if idx != 0:
-                output.append("")  # فاصله بین رتبه‌ها
-            output.append(f"رتبه {current_rank}:")
-            same_rank_count = 1
+    for i, (name, gold_total, silver, bronze, medals) in enumerate(participants):
+        values = (gold_total, silver, bronze)
+        if values != prev_values:
+            rank += count_same
+            count_same = 1
+            output.append(f"رتبه {rank}:")
         else:
-            same_rank_count += 1
+            count_same += 1
+        output.append(f"{name}: 🥇({medals['gold']}) 🥈({medals['silver']}) 🥉({medals['bronze']})")
+        prev_values = values
 
-        output.append(f"{name}: 🥇({g}) 🥈({s}) 🥉({b})")
-        prev = key
-        if idx + 1 < len(players):
-            next_player = players[idx + 1]
-            next_key = (next_player[1], next_player[2], next_player[3])
-            if next_key != key:
-                current_rank += same_rank_count
-
-    await update.message.reply_text("\n".join(output))
+    await update.message.reply_text("\n\n".join(output))
 
 # اجرای مستقیم در Render با Webhook
 TOKEN = os.getenv("BOT_TOKEN")
