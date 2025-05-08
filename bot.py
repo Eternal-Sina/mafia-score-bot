@@ -61,7 +61,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rank = 1
     for score in sorted_scores:
         names = score_map[score]
-        output.append(f"🏅 رتبه {rank}:")
+        output.append(f" رتبه {rank}:")
         for name in names:
             m = data[name]
             output.append(f"{name}: 🥇({m['gold']}) 🥈({m['silver']}) 🥉({m['bronze']})")
