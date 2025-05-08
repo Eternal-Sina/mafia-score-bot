@@ -1,12 +1,10 @@
 import os
 import json
-from collections import defaultdict
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 DATA_FILE = "medals.json"
 
-# بارگذاری داده‌ها از فایل
 def load_data():
     try:
         with open(DATA_FILE, "r") as f:
@@ -14,15 +12,12 @@ def load_data():
     except FileNotFoundError:
         return {}
 
-# ذخیره داده‌ها در فایل
 def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f)
 
-# داده‌های اولیه
 data = load_data()
 
-# دستور ثبت مدال‌ها
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 3:
         await update.message.reply_text("فرمت: /register name1 name2 name3")
@@ -40,39 +35,50 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_data(data)
     await update.message.reply_text("مدال‌ها ثبت شدند.")
 
-# دستور نمایش لیدربورد
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    score_map = defaultdict(list)
-
-    # محاسبه امتیاز و ذخیره داده‌ها
+    # آماده‌سازی لیست رتبه‌بندی بر اساس طلای واقعی + فرضی، بعد نقره، بعد برنز
+    players = []
     for name, medals in data.items():
         g = medals["gold"]
         s = medals["silver"]
         b = medals["bronze"]
-        score = g + s // 2 + b // 4  # تبدیل نقره و برنز به طلای فرضی
-        score_map[score].append((name, g, s, b))  # ذخیره نام و تعداد مدال‌ها
 
-    # مرتب‌سازی بر اساس امتیاز، سپس طلا، نقره، برنز
-    sorted_scores = sorted(score_map.keys(), reverse=True)
+        # فقط هر ۲ نقره = ۱ طلای فرضی، بقیه نادیده گرفته میشه
+        fake_golds = (s // 2) + (b // 4)
+        real_plus_fake_gold = g + fake_golds
+        players.append((name, real_plus_fake_gold, s, b, g, s, b))  # tuple برای مرتب‌سازی
+
+    # مرتب‌سازی: طلا (واقعی + فرضی) → نقره → برنز
+    players.sort(key=lambda x: (-x[1], -x[2], -x[3]))
 
     output = []
-    rank = 1
-    for score in sorted_scores:
-        names_and_medals = score_map[score]
-        
-        # مرتب‌سازی افراد با امتیاز مشابه بر اساس تعداد مدال‌های طلا، نقره و برنز
-        names_and_medals.sort(key=lambda x: (-x[1], -x[2], -x[3]))  # اول طلا، سپس نقره و بعد برنز
+    current_rank = 1
+    prev = None
+    same_rank_count = 0
 
-        output.append(f" رتبه {rank}:")
-        for name, g, s, b in names_and_medals:
-            output.append(f"{name}: 🥇({g}) 🥈({s}) 🥉({b})")
-        
-        # تعداد نفرات هم رتبه را از rank بعدی کم می‌کنیم
-        rank += len(names_and_medals)
+    for idx, player in enumerate(players):
+        name, _, _, _, g, s, b = player
+        key = (player[1], player[2], player[3])  # برای مقایسه رتبه
+
+        if key != prev:
+            if idx != 0:
+                output.append("")  # فاصله بین رتبه‌ها
+            output.append(f"رتبه {current_rank}:")
+            same_rank_count = 1
+        else:
+            same_rank_count += 1
+
+        output.append(f"{name}: 🥇({g}) 🥈({s}) 🥉({b})")
+        prev = key
+        if idx + 1 < len(players):
+            next_player = players[idx + 1]
+            next_key = (next_player[1], next_player[2], next_player[3])
+            if next_key != key:
+                current_rank += same_rank_count
 
     await update.message.reply_text("\n".join(output))
 
-# تنظیمات Bot
+# اجرای مستقیم در Render با Webhook
 TOKEN = os.getenv("BOT_TOKEN")
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
 
@@ -80,7 +86,6 @@ app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("register", register))
 app.add_handler(CommandHandler("leaderboard", leaderboard))
 
-# اجرای Webhook
 app.run_webhook(
     listen="0.0.0.0",
     port=int(os.environ["PORT"]),
