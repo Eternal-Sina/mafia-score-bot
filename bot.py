@@ -1,8 +1,9 @@
 import os
+import json
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # تنظیمات پایگاه داده
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -24,17 +25,82 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # بررسی دسترسی ادمین
+    ADMIN_IDS = [66625527]  # آیدی عددی خودت رو جایگزین کن
+    user_id = update.message.from_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("فقط ادمین‌ها می‌تونن مدال ثبت کنن!")
+        return
+
     if len(context.args) != 3:
         await update.message.reply_text("فرمت: /register name1 name2 name3")
         return
 
-    names = context.args
+    # ذخیره موقت اسامی واردشده
+    context.user_data["pending_names"] = context.args
+    context.user_data["confirmed_names"] = []
+    context.user_data["current_index"] = 0
+
+    # شروع فرآیند تأیید اسامی
+    await check_name(update, context)
+
+async def check_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    session = Session()
+    try:
+        current_index = context.user_data["current_index"]
+        pending_names = context.user_data["pending_names"]
+        if current_index >= len(pending_names):
+            # همه اسامی تأیید شدن، ثبت مدال‌ها
+            await finalize_registration(update, context)
+            return
+
+        name = pending_names[current_index].strip()
+        # جستجوی اسامی مشابه
+        all_players = session.query(Player).all()
+        similar_names = [
+            player.name for player in all_players
+            if name.lower() in player.name.lower() or player.name.lower() in name.lower()
+        ]
+
+        if similar_names:
+            # نمایش پیشنهادات با دکمه‌های اینلاین
+            keyboard = [
+                [InlineKeyboardButton(s_name, callback_data=f"select_name:{s_name}")]
+                for s_name in similar_names
+            ]
+            keyboard.append([InlineKeyboardButton(f"استفاده از '{name}' به‌عنوان اسم جدید", callback_data=f"new_name:{name}")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(
+                f"اسم '{name}' مشابه این اسامی موجوده. لطفاً انتخاب کنید یا اسم جدید رو تأیید کنید:",
+                reply_markup=reply_markup
+            )
+        else:
+            # هیچ مشابهتی پیدا نشد، مستقیم تأیید می‌شه
+            context.user_data["confirmed_names"].append(name)
+            context.user_data["current_index"] += 1
+            await check_name(update, context)
+    finally:
+        session.close()
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if data.startswith("select_name:") or data.startswith("new_name:"):
+        selected_name = data.split(":", 1)[1]
+        context.user_data["confirmed_names"].append(selected_name)
+        context.user_data["current_index"] += 1
+        await check_name(query.message, context)
+
+async def finalize_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    confirmed_names = context.user_data["confirmed_names"]
     medals = ["gold", "silver", "bronze"]
 
     session = Session()
     try:
         for i in range(3):
-            name = names[i]
+            name = confirmed_names[i]
             player = session.query(Player).filter_by(name=name).first()
             if not player:
                 player = Player(name=name, gold=0, silver=0, bronze=0)
@@ -42,12 +108,14 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             setattr(player, medals[i], getattr(player, medals[i]) + 1)
         
         session.commit()
-        await update.message.reply_text("مدال‌ها ثبت شدند.")
+        await update.message.reply_text("مدال‌ها با موفقیت ثبت شدند!")
     except Exception as e:
         session.rollback()
         await update.message.reply_text(f"خطا در ثبت مدال‌ها: {str(e)}")
     finally:
         session.close()
+        # پاک کردن داده‌های موقت
+        context.user_data.clear()
 
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = Session()
@@ -94,10 +162,9 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.close()
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # لیست آیدی‌های عددی ادمین‌ها (آیدی خودت رو جایگزین کن)
-    ADMIN_IDS = [66625527]  # آیدی عددی تلگرام خودت رو اینجا بذار
+    # لیست آیدی‌های عددی ادمین‌ها
+    ADMIN_IDS = [123456789]  # آیدی عددی خودت رو جایگزین کن
     
-    # گرفتن آیدی کاربر
     user_id = update.message.from_user.id
     if user_id not in ADMIN_IDS:
         await update.message.reply_text(f"شما (آیدی: {user_id}) ادمین نیستید! فقط ادمین‌ها می‌تونن لیدربورد رو ریست کنن.")
@@ -105,7 +172,6 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     session = Session()
     try:
-        # پاک کردن همه داده‌های جدول players
         session.query(Player).delete()
         session.commit()
         await update.message.reply_text("لیدربورد با موفقیت ریست شد! همه نام‌ها و امتیازات پاک شدند.")
@@ -123,9 +189,10 @@ app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("register", register))
 app.add_handler(CommandHandler("leaderboard", leaderboard))
 app.add_handler(CommandHandler("reset", reset))
+app.add_handler(CallbackQueryHandler(button_callback))
 
 app.run_webhook(
     listen="0.0.0.0",
-    port=int(os.environ["PORT"]),
+    port=int(os.environ.get("PORT", 8443)),
     webhook_url=f"{RENDER_EXTERNAL_URL}/"
 )
