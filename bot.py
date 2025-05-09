@@ -1,5 +1,4 @@
 import os
-import json
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -47,6 +46,10 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def check_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = Session()
     try:
+        if "current_index" not in context.user_data or "pending_names" not in context.user_data:
+            await update.message.reply_text("خطا: داده‌های موقت از دست رفته. لطفاً دوباره /register رو اجرا کنید.")
+            return
+
         current_index = context.user_data["current_index"]
         pending_names = context.user_data["pending_names"]
         if current_index >= len(pending_names):
@@ -86,14 +89,24 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    # چک کردن وجود داده‌های موقت
+    if "confirmed_names" not in context.user_data or "current_index" not in context.user_data:
+        await query.message.reply_text("خطا: جلسه منقضی شده. لطفاً دوباره /register رو اجرا کنید.")
+        return
+
     data = query.data
     if data.startswith("select_name:") or data.startswith("new_name:"):
         selected_name = data.split(":", 1)[1]
         context.user_data["confirmed_names"].append(selected_name)
         context.user_data["current_index"] += 1
-        await check_name(query.message, context)
+        # استفاده مستقیم از query.message
+        await check_name(query, context)
 
 async def finalize_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if "confirmed_names" not in context.user_data or len(context.user_data["confirmed_names"]) != 3:
+        await update.message.reply_text("خطا: اسامی تأییدشده کامل نیستن. لطفاً دوباره /register رو اجرا کنید.")
+        return
+
     confirmed_names = context.user_data["confirmed_names"]
     medals = ["gold", "silver", "bronze"]
 
