@@ -192,15 +192,6 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         session.close()
 
-# تنظیم منوی دستورات
-async def set_bot_commands(app):
-    commands = [
-        BotCommand("register", "ثبت مدال برای ۳ بازیکن (فقط ادمین‌ها): /register name1 name2 name3"),
-        BotCommand("leaderboard", "نمایش لیدربورد بازیکنان"),
-        BotCommand("reset", "ریست کامل لیدربورد (فقط ادمین‌ها)")
-    ]
-    await app.bot.set_my_commands(commands)
-
 # اجرای مستقیم در Render با Webhook
 TOKEN = os.getenv("BOT_TOKEN")
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
@@ -212,10 +203,19 @@ app.add_handler(CommandHandler("reset", reset))
 app.add_handler(CallbackQueryHandler(button_callback))
 
 # تنظیم منوی دستورات موقع راه‌اندازی
-app.add_post_init_hook(set_bot_commands)
+async def main():
+    commands = [
+        BotCommand("register", "ثبت مدال برای ۳ بازیکن (فقط ادمین‌ها): /register name1 name2 name3"),
+        BotCommand("leaderboard", "نمایش لیدربورد بازیکنان"),
+        BotCommand("reset", "ریست کامل لیدربورد (فقط ادمین‌ها)")
+    ]
+    await app.bot.set_my_commands(commands)
+    await app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 8443)),
+        webhook_url=f"{RENDER_EXTERNAL_URL}/"
+    )
 
-app.run_webhook(
-    listen="0.0.0.0",
-    port=int(os.environ.get("PORT", 8443)),
-    webhook_url=f"{RENDER_EXTERNAL_URL}/"
-)
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
