@@ -1,7 +1,7 @@
 import os
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # تنظیمات پایگاه داده
@@ -25,10 +25,10 @@ Session = sessionmaker(bind=engine)
 
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # بررسی دسترسی ادمین
-    ADMIN_IDS = [66625527]  # آیدی عددی خودت رو جایگزین کن
+    ADMIN_IDS = [66625527]  # آیدی عددی شما
     user_id = update.message.from_user.id
     if user_id not in ADMIN_IDS:
-        await update.message.reply_text("فقط ادمین‌ها می‌تونن مدال ثبت کنن!")
+        await update.message.reply_text(f"فقط ادمین‌ها می‌تونن مدال ثبت کنن! آیدی شما: {user_id}")
         return
 
     if len(context.args) != 3:
@@ -99,7 +99,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         selected_name = data.split(":", 1)[1]
         context.user_data["confirmed_names"].append(selected_name)
         context.user_data["current_index"] += 1
-        # استفاده مستقیم از query.message
         await check_name(query, context)
 
 async def finalize_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -157,7 +156,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if key != prev:
                 if idx != 0:
                     output.append("")
-                output.append(f"🏅 رتبه {current_rank}:")
+                output.append(f"رتبه {current_rank}:")
                 same_rank_count = 1
             else:
                 same_rank_count += 1
@@ -176,11 +175,10 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # لیست آیدی‌های عددی ادمین‌ها
-    ADMIN_IDS = [66625527]  # آیدی عددی خودت رو جایگزین کن
-    
+    ADMIN_IDS = [66625527]  # آیدی عددی شما
     user_id = update.message.from_user.id
     if user_id not in ADMIN_IDS:
-        await update.message.reply_text(f"شما (آیدی: {user_id}) ادمین نیستید! فقط ادمین‌ها می‌تونن لیدربورد رو ریست کنن.")
+        await update.message.reply_text(f"خطا: شما (آیدی: {user_id}) ادمین نیستید! فقط ادمین‌ها می‌تونن لیدربورد رو ریست کنن.")
         return
 
     session = Session()
@@ -194,6 +192,15 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         session.close()
 
+# تنظیم منوی دستورات
+async def set_bot_commands(app):
+    commands = [
+        BotCommand("register", "ثبت مدال برای ۳ بازیکن (فقط ادمین‌ها): /register name1 name2 name3"),
+        BotCommand("leaderboard", "نمایش لیدربورد بازیکنان"),
+        BotCommand("reset", "ریست کامل لیدربورد (فقط ادمین‌ها)")
+    ]
+    await app.bot.set_my_commands(commands)
+
 # اجرای مستقیم در Render با Webhook
 TOKEN = os.getenv("BOT_TOKEN")
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
@@ -203,6 +210,9 @@ app.add_handler(CommandHandler("register", register))
 app.add_handler(CommandHandler("leaderboard", leaderboard))
 app.add_handler(CommandHandler("reset", reset))
 app.add_handler(CallbackQueryHandler(button_callback))
+
+# تنظیم منوی دستورات موقع راه‌اندازی
+app.add_post_init_hook(set_bot_commands)
 
 app.run_webhook(
     listen="0.0.0.0",
