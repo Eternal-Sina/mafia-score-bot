@@ -1,31 +1,29 @@
 import os
-import json
-from collections import defaultdict
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# مسیر فایل داده‌ها
-DATA_FILE = "medals.json"
+# تنظیمات پایگاه داده
+DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_engine(DATABASE_URL, echo=False)
+Base = declarative_base()
 
-# تابع برای بارگذاری داده‌ها از فایل
-def load_data():
-    try:
-        with open(DATA_FILE, "r") as f:
-            data = json.load(f)
-            print(f"Data loaded: {data}")  # نمایش داده‌های بارگذاری شده
-            return data
-    except FileNotFoundError:
-        return {}
+# تعریف مدل بازیکن
+class Player(Base):
+    __tablename__ = "players"
+    name = Column(String, primary_key=True)
+    gold = Column(Integer, default=0)
+    silver = Column(Integer, default=0)
+    bronze = Column(Integer, default=0)
 
-# تابع برای ذخیره داده‌ها به فایل
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
+# ایجاد جدول‌ها در پایگاه داده
+Base.metadata.create_all(engine)
 
-# بارگذاری داده‌ها از فایل
-data = load_data()
+# تنظیم جلسه برای تعامل با پایگاه داده
+Session = sessionmaker(bind=engine)
 
-# تابع ثبت مدال‌ها
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 3:
         await update.message.reply_text("فرمت: /register name1 name2 name3")
@@ -34,58 +32,85 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     names = context.args
     medals = ["gold", "silver", "bronze"]
 
-    for i in range(3):
-        name = names[i]
-        if name not in data:
-            data[name] = {"gold": 0, "silver": 0, "bronze": 0}
-        data[name][medals[i]] += 1
-
-    # ذخیره داده‌ها به فایل
-    save_data(data)
-    await update.message.reply_text("مدال‌ها ثبت شدند.")
-
-# تابع برای نمایش لیدربورد
-async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    score_map = defaultdict(list)
-
-    # پردازش داده‌ها و محاسبه امتیاز
-    for name, medals in data.items():
-        g = medals["gold"]
-        s = medals["silver"]
-        b = medals["bronze"]
+    # ایجاد جلسه برای تعامل با پایگاه داده
+    session = Session()
+    try:
+        for i in range(3):
+            name = names[i]
+            # بررسی وجود بازیکن
+            player = session.query(Player).filter_by(name=name).first()
+            if not player:
+                # ایجاد بازیکن جدید
+                player = Player(name=name, gold=0, silver=0, bronze=0)
+                session.add(player)
+            # افزایش تعداد مدال
+            setattr(player, medals[i], getattr(player, medals[i]) + 1)
         
-        # محاسبه امتیاز با تبدیل نقره و برنز به طلای فرضی
-        score = g + s // 2 + b // 4  # تبدیل نقره و برنز به طلای فرضی
-        score_map[score].append(name)
+        session.commit()
+        await update.message.reply_text("مدال‌ها ثبت شدند.")
+    except Exception as e:
+        session.rollback()
+        await update.message.reply_text(f"خطا در ثبت مدال‌ها: {str(e)}")
+    finally:
+        session.close()
 
-    # مرتب کردن امتیازات
-    sorted_scores = sorted(score_map.keys(), reverse=True)
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    session = Session()
+    try:
+        # دریافت همه بازیکنان
+        players = session.query(Player).all()
+        player_list = []
+        for player in players:
+            g = player.gold
+            s = player.silver
+            b = player.bronze
+            # محاسبه طلای فرضی
+            fake_golds = (s // 2) + (b // 4)
+            real_plus_fake_gold = g + fake_golds
+            player_list.append((player.name, real_plus_fake_gold, s, b, g, s, b))
 
-    output = []
-    rank = 1
-    for score in sorted_scores:
-        names = score_map[score]
-        output.append(f"🏅 رتبه {rank}:")
-        for name in names:
-            m = data[name]
-            output.append(f"{name}: 🥇({m['gold']}) 🥈({m['silver']}) 🥉({m['bronze']})")
-        rank += len(names)
+        # مرتب‌سازی بر اساس طلا (واقعی + فرضی) → نقره → برنز
+        player_list.sort(key=lambda x: (-x[1], -x[2], -x[3]))
 
-    # چاپ اطلاعات در کنسول برای دیباگ
-    print("\n\n".join(output))  # اینجا داده‌ها را در کنسول نمایش می‌دهیم
+        output = []
+        current_rank = 1
+        prev = None
+        same_rank_count = 0
 
-    # ارسال به تلگرام
-    await update.message.reply_text("\n\n".join(output))
+        for idx, player in enumerate(player_list):
+            name, _, _, _, g, s, b = player
+            key = (player[1], player[2], player[3])
 
-# تنظیمات وبهوک و دپلوی در Render
+            if key != prev:
+                if idx != 0:
+                    output.append("")
+                output.append(f"رتبه {current_rank}:")
+                same_rank_count = 1
+            else:
+                same_rank_count += 1
+
+            output.append(f"{name}: 🥇({g}) 🥈({s}) 🥉({b})")
+            prev = key
+            if idx + 1 < len(player_list):
+                next_player = player_list[idx + 1]
+                next_key = (next_player[1], next_player[2], next_player[3])
+                if next_key != key:
+                    current_rank += same_rank_count
+
+        await update.message.reply_text("\n".join(output) or "هیچ بازیکنی ثبت نشده است.")
+    finally:
+        session.close()
+
+# اجرای مستقیم در Render با Webhook
 TOKEN = os.getenv("BOT_TOKEN")
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
 
-# ساخت اپلیکیشن تلگرام
 app = ApplicationBuilder().token(TOKEN).build()
-
-# اضافه کردن هندلرهای دستور
 app.add_handler(CommandHandler("register", register))
 app.add_handler(CommandHandler("leaderboard", leaderboard))
 
-# اجرای وب
+app.run_webhook(
+    listen="0.0.0.0",
+    port=int(os.environ["PORT"]),
+    webhook_url=f"{RENDER_EXTERNAL_URL}/"
+)
