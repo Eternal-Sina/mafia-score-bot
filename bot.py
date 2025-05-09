@@ -76,7 +76,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if key != prev:
                 if idx != 0:
                     output.append("")
-                output.append(f"رتبه {current_rank}:")
+                output.append(f"🏅 رتبه {current_rank}:")
                 same_rank_count = 1
             else:
                 same_rank_count += 1
@@ -94,13 +94,13 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.close()
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # لیست یوزرنیم‌های ادمین (مثال: جایگزین با یوزرنیم‌های واقعی کنید)
-    ADMIN_USERNAMES = ["@sinamsv", "@AnotherAdmin"]
+    # لیست آیدی‌های عددی ادمین‌ها (آیدی خودت رو جایگزین کن)
+    ADMIN_IDS = [66625527]  # آیدی عددی تلگرام خودت رو اینجا بذار
     
-    # بررسی یوزرنیم کاربر
-    user_username = update.message.from_user.username
-    if not user_username or user_username not in ADMIN_USERNAMES:
-        await update.message.reply_text("فقط ادمین‌ها می‌تونن لیدربورد رو ریست کنن!")
+    # گرفتن آیدی کاربر
+    user_id = update.message.from_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text(f"شما (آیدی: {user_id}) ادمین نیستید! فقط ادمین‌ها می‌تونن لیدربورد رو ریست کنن.")
         return
 
     session = Session()
