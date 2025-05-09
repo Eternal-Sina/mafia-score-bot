@@ -176,7 +176,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # لیست آیدی‌های عددی ادمین‌ها
-    ADMIN_IDS = [123456789]  # آیدی عددی خودت رو جایگزین کن
+    ADMIN_IDS = [66625527]  # آیدی عددی خودت رو جایگزین کن
     
     user_id = update.message.from_user.id
     if user_id not in ADMIN_IDS:
