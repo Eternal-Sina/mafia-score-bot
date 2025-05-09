@@ -156,7 +156,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if key != prev:
                 if idx != 0:
                     output.append("")
-                output.append(f"رتبه {current_rank}:")
+                output.append(f"🏅 رتبه {current_rank}:")
                 same_rank_count = 1
             else:
                 same_rank_count += 1
@@ -202,20 +202,6 @@ app.add_handler(CommandHandler("leaderboard", leaderboard))
 app.add_handler(CommandHandler("reset", reset))
 app.add_handler(CallbackQueryHandler(button_callback))
 
-# تنظیم منوی دستورات موقع راه‌اندازی
-async def main():
-    commands = [
-        BotCommand("register", "ثبت مدال برای ۳ بازیکن (فقط ادمین‌ها): /register name1 name2 name3"),
-        BotCommand("leaderboard", "نمایش لیدربورد بازیکنان"),
-        BotCommand("reset", "ریست کامل لیدربورد (فقط ادمین‌ها)")
-    ]
-    await app.bot.set_my_commands(commands)
-    await app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 8443)),
-        webhook_url=f"{RENDER_EXTERNAL_URL}/"
-    )
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+# تنظیم منوی دستورات قبل از راه‌اندازی وب‌هوک
+commands = [
+    BotCommand("register", "ثبت مدال برای ۳ بازیکن (فقط ادمین‌ها): /
