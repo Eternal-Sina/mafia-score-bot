@@ -1,7 +1,6 @@
 import os
 from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
@@ -32,18 +31,14 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     names = context.args
     medals = ["gold", "silver", "bronze"]
 
-    # ایجاد جلسه برای تعامل با پایگاه داده
     session = Session()
     try:
         for i in range(3):
             name = names[i]
-            # بررسی وجود بازیکن
             player = session.query(Player).filter_by(name=name).first()
             if not player:
-                # ایجاد بازیکن جدید
                 player = Player(name=name, gold=0, silver=0, bronze=0)
                 session.add(player)
-            # افزایش تعداد مدال
             setattr(player, medals[i], getattr(player, medals[i]) + 1)
         
         session.commit()
@@ -57,19 +52,16 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = Session()
     try:
-        # دریافت همه بازیکنان
         players = session.query(Player).all()
         player_list = []
         for player in players:
             g = player.gold
             s = player.silver
             b = player.bronze
-            # محاسبه طلای فرضی
             fake_golds = (s // 2) + (b // 4)
             real_plus_fake_gold = g + fake_golds
             player_list.append((player.name, real_plus_fake_gold, s, b, g, s, b))
 
-        # مرتب‌سازی بر اساس طلا (واقعی + فرضی) → نقره → برنز
         player_list.sort(key=lambda x: (-x[1], -x[2], -x[3]))
 
         output = []
@@ -101,6 +93,28 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         session.close()
 
+async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # لیست یوزرنیم‌های ادمین (مثال: جایگزین با یوزرنیم‌های واقعی کنید)
+    ADMIN_USERNAMES = ["@sinamsv", "@AnotherAdmin"]
+    
+    # بررسی یوزرنیم کاربر
+    user_username = update.message.from_user.username
+    if not user_username or user_username not in ADMIN_USERNAMES:
+        await update.message.reply_text("فقط ادمین‌ها می‌تونن لیدربورد رو ریست کنن!")
+        return
+
+    session = Session()
+    try:
+        # پاک کردن همه داده‌های جدول players
+        session.query(Player).delete()
+        session.commit()
+        await update.message.reply_text("لیدربورد با موفقیت ریست شد! همه نام‌ها و امتیازات پاک شدند.")
+    except Exception as e:
+        session.rollback()
+        await update.message.reply_text(f"خطا در ریست لیدربورد: {str(e)}")
+    finally:
+        session.close()
+
 # اجرای مستقیم در Render با Webhook
 TOKEN = os.getenv("BOT_TOKEN")
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
@@ -108,6 +122,7 @@ RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("register", register))
 app.add_handler(CommandHandler("leaderboard", leaderboard))
+app.add_handler(CommandHandler("reset", reset))
 
 app.run_webhook(
     listen="0.0.0.0",
