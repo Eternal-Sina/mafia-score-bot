@@ -213,7 +213,7 @@ app.add_handler(CallbackQueryHandler(button_callback))
 
 # تنظیم منوی دستورات قبل از راه‌اندازی وب‌هوک
 commands = [
-    BotCommand("register", "ثبت مدال برای ۳ بازیکن (فقط ادمین‌ها): مثال: علی رضا,مهدی کاظمی,سینا"),
+    BotCommand("register", "ثبت مدال برای ۳ بازیکن (فقط ادمین‌ها): مثال: سینا موسوی,علی اکبر,سارا خلیلی"),
     BotCommand("leaderboard", "نمایش لیدربورد بازیکنان"),
     BotCommand("reset", "ریست کامل لیدربورد (فقط ادمین‌ها)")
 ]
