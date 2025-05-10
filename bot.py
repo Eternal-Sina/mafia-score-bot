@@ -204,4 +204,14 @@ app.add_handler(CallbackQueryHandler(button_callback))
 
 # تنظیم منوی دستورات قبل از راه‌اندازی وب‌هوک
 commands = [
-    BotCommand("register", "ثبت مدال برای ۳ بازیکن (فقط ادمین‌ها): /
+    BotCommand("register", "ثبت مدال برای ۳ بازیکن (فقط ادمین‌ها)"),
+    BotCommand("leaderboard", "نمایش لیدربورد بازیکنان"),
+    BotCommand("reset", "ریست کامل لیدربورد (فقط ادمین‌ها)")
+]
+app.bot.set_my_commands(commands=commands)
+
+app.run_webhook(
+    listen="0.0.0.0",
+    port=int(os.environ.get("PORT", 8443)),
+    webhook_url=f"{RENDER_EXTERNAL_URL}/"
+)
