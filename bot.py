@@ -25,7 +25,7 @@ Session = sessionmaker(bind=engine)
 
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # بررسی دسترسی ادمین
-    ADMIN_IDS = [66625527]  # آیدی عددی شما
+    ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS", "").split(",")))  # از متغیر محیطی خوانده می‌شود
     user_id = update.message.from_user.id
     if user_id not in ADMIN_IDS:
         await update.message.reply_text(f"فقط ادمین‌ها می‌تونن مدال ثبت کنن! آیدی شما: {user_id}")
@@ -184,7 +184,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # لیست آیدی‌های عددی ادمین‌ها
-    ADMIN_IDS = [66625527]  # آیدی عددی شما
+    ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS", "").split(",")))  # از متغیر محیطی خوانده می‌شود
     user_id = update.message.from_user.id
     if user_id not in ADMIN_IDS:
         await update.message.reply_text(f"خطا: شما (آیدی: {user_id}) ادمین نیستید! فقط ادمین‌ها می‌تونن لیدربورد رو ریست کنن.")
