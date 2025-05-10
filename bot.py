@@ -208,7 +208,12 @@ commands = [
     BotCommand("leaderboard", "نمایش لیدربورد بازیکنان"),
     BotCommand("reset", "ریست کامل لیدربورد (فقط ادمین‌ها)")
 ]
-app.bot.set_my_commands(commands=commands)
+
+# راه‌اندازی ربات و تنظیم دستورات به‌صورت ناهمگام
+import asyncio
+loop = asyncio.get_event_loop()
+loop.run_until_complete(app.initialize())
+loop.run_until_complete(app.bot.set_my_commands(commands=commands))
 
 app.run_webhook(
     listen="0.0.0.0",
