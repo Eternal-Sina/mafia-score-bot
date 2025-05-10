@@ -31,12 +31,21 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"فقط ادمین‌ها می‌تونن مدال ثبت کنن! آیدی شما: {user_id}")
         return
 
-    if len(context.args) != 3:
-        await update.message.reply_text("فرمت: /register name1 name2 name3")
+    # گرفتن ورودی و جدا کردن اسامی با کاما
+    if not context.args:
+        await update.message.reply_text("فرمت: /register name1,name2,name3\nمثال: /register علی رضا,مهدی کاظمی,سینا")
+        return
+
+    # تبدیل ورودی به رشته و جدا کردن با کاما
+    input_text = ' '.join(context.args)
+    names = [name.strip() for name in input_text.split(',')]
+    
+    if len(names) != 3:
+        await update.message.reply_text("لطفاً دقیقاً ۳ اسم وارد کنید، با کاما جدا شده.\nمثال: /register علی رضا,مهدی کاظمی,سینا")
         return
 
     # ذخیره موقت اسامی واردشده
-    context.user_data["pending_names"] = context.args
+    context.user_data["pending_names"] = names
     context.user_data["confirmed_names"] = []
     context.user_data["current_index"] = 0
 
@@ -204,7 +213,7 @@ app.add_handler(CallbackQueryHandler(button_callback))
 
 # تنظیم منوی دستورات قبل از راه‌اندازی وب‌هوک
 commands = [
-    BotCommand("register", "ثبت مدال برای ۳ بازیکن (فقط ادمین‌ها)"),
+    BotCommand("register", "ثبت مدال برای ۳ بازیکن (فقط ادمین‌ها): مثال: علی رضا,مهدی کاظمی,سینا"),
     BotCommand("leaderboard", "نمایش لیدربورد بازیکنان"),
     BotCommand("reset", "ریست کامل لیدربورد (فقط ادمین‌ها)")
 ]
