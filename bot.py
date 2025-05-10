@@ -33,7 +33,7 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # گرفتن ورودی و جدا کردن اسامی با کاما
     if not context.args:
-        await update.message.reply_text("فرمت: /register name1,name2,name3\nمثال: /register علی رضا,مهدی کاظمی,سینا")
+        await update.message.reply_text("فرمت: /register name1,name2,name3\nمثال: /register سینا موسوی,علی اکبر,سارا خلیلی")
         return
 
     # تبدیل ورودی به رشته و جدا کردن با کاما
@@ -41,7 +41,7 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     names = [name.strip() for name in input_text.split(',')]
     
     if len(names) != 3:
-        await update.message.reply_text("لطفاً دقیقاً ۳ اسم وارد کنید، با کاما جدا شده.\nمثال: /register علی رضا,مهدی کاظمی,سینا")
+        await update.message.reply_text("لطفاً دقیقاً ۳ اسم وارد کنید، با کاما جدا شده.\nمثال: /register سینا موسوی,علی اکبر,سارا خلیلی")
         return
 
     # ذخیره موقت اسامی واردشده
